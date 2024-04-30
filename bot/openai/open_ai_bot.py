@@ -11,7 +11,7 @@ from bot.session_manager import SessionManager
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
 from common.log import logger
-from config import conf
+from config import conf, load_config
 from dotenv import load_dotenv, find_dotenv
 
 
@@ -49,6 +49,9 @@ class OpenAIBot(Bot, OpenAIImage):
                 elif query == "#清除所有":
                     self.sessions.clear_all_session()
                     reply = Reply(ReplyType.INFO, "所有人记忆已清除")
+                elif query == "#更新配置":
+                    load_config()
+                    reply = Reply(ReplyType.INFO, "配置已更新")
                 else:
                     session = self.sessions.session_query(query, session_id)
                     result = self.reply_text(session)
