@@ -3,8 +3,7 @@
 import time
 
 import openai
-import openai.error
-
+from openai import OpenAI
 from bot.bot import Bot
 from bot.openai.open_ai_image import OpenAIImage
 from bot.openai.open_ai_session import OpenAISession
@@ -12,7 +11,9 @@ from bot.session_manager import SessionManager
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
 from common.log import logger
-from config import conf
+from config import conf, load_config
+from dotenv import load_dotenv, find_dotenv
+
 
 user_session = dict()
 
@@ -21,25 +22,19 @@ user_session = dict()
 class OpenAIBot(Bot, OpenAIImage):
     def __init__(self):
         super().__init__()
-        openai.api_key = conf().get("open_ai_api_key")
-        if conf().get("open_ai_api_base"):
-            openai.api_base = conf().get("open_ai_api_base")
-        proxy = conf().get("proxy")
-        if proxy:
-            openai.proxy = proxy
-
-        self.sessions = SessionManager(OpenAISession, model=conf().get("model") or "text-davinci-003")
+        _ = load_dotenv(find_dotenv())
+        self.sessions = SessionManager(OpenAISession, model=conf().get("model") or "gpt-3.5-turbo")
         self.args = {
-            "model": conf().get("model") or "text-davinci-003",  # 对话模型的名称
+            "model": conf().get("model") or "gpt-3.5-turbo",  # 对话模型的名称
             "temperature": conf().get("temperature", 0.9),  # 值在[0,1]之间，越大表示回复越具有不确定性
             "max_tokens": 1200,  # 回复最大的字符数
             "top_p": 1,
             "frequency_penalty": conf().get("frequency_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
             "presence_penalty": conf().get("presence_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
-            "request_timeout": conf().get("request_timeout", None),  # 请求超时时间，openai接口默认设置为600，对于难问题一般需要较长时间
             "timeout": conf().get("request_timeout", None),  # 重试超时时间，在这个时间内，将会自动重试
             "stop": ["\n\n\n"],
         }
+        self.client = OpenAI()
 
     def reply(self, query, context=None):
         # acquire reply content
@@ -54,6 +49,9 @@ class OpenAIBot(Bot, OpenAIImage):
                 elif query == "#清除所有":
                     self.sessions.clear_all_session()
                     reply = Reply(ReplyType.INFO, "所有人记忆已清除")
+                elif query == "#更新配置":
+                    load_config()
+                    reply = Reply(ReplyType.INFO, "配置已更新")
                 else:
                     session = self.sessions.session_query(query, session_id)
                     result = self.reply_text(session)
@@ -83,10 +81,10 @@ class OpenAIBot(Bot, OpenAIImage):
 
     def reply_text(self, session: OpenAISession, retry_count=0):
         try:
-            response = openai.Completion.create(prompt=str(session), **self.args)
-            res_content = response.choices[0]["text"].strip().replace("<|endoftext|>", "")
-            total_tokens = response["usage"]["total_tokens"]
-            completion_tokens = response["usage"]["completion_tokens"]
+            response = self.client.chat.completions.create(messages=session.messages, model=self.args["model"], temperature=self.args["temperature"], max_tokens=self.args["max_tokens"], top_p=self.args["top_p"], frequency_penalty=self.args["frequency_penalty"], presence_penalty=self.args["presence_penalty"], timeout=self.args["timeout"], stop=self.args["stop"])
+            res_content = response.choices[0].message.content.strip().replace("<|endoftext|>", "")
+            total_tokens = response.usage.total_tokens
+            completion_tokens = response.usage.completion_tokens
             logger.info("[OPEN_AI] reply={}".format(res_content))
             return {
                 "total_tokens": total_tokens,
@@ -96,17 +94,17 @@ class OpenAIBot(Bot, OpenAIImage):
         except Exception as e:
             need_retry = retry_count < 2
             result = {"completion_tokens": 0, "content": "我现在有点累了，等会再来吧"}
-            if isinstance(e, openai.error.RateLimitError):
+            if isinstance(e, openai.RateLimitError):
                 logger.warn("[OPEN_AI] RateLimitError: {}".format(e))
                 result["content"] = "提问太快啦，请休息一下再问我吧"
                 if need_retry:
                     time.sleep(20)
-            elif isinstance(e, openai.error.Timeout):
+            elif isinstance(e, openai.Timeout):
                 logger.warn("[OPEN_AI] Timeout: {}".format(e))
                 result["content"] = "我没有收到你的消息"
                 if need_retry:
                     time.sleep(5)
-            elif isinstance(e, openai.error.APIConnectionError):
+            elif isinstance(e, openai.APIConnectionError):
                 logger.warn("[OPEN_AI] APIConnectionError: {}".format(e))
                 need_retry = False
                 result["content"] = "我连接不到你的网络"

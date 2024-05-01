@@ -20,7 +20,7 @@ class Bridge(object):
         }
         # 这边取配置的模型
         model_type = conf().get("model") or const.GPT35
-        if model_type in ["text-davinci-003"]:
+        if model_type in ["gpt-3.5-turbo"]:
             self.btype["chat"] = const.OPEN_AI
         if conf().get("use_azure_chatgpt", False):
             self.btype["chat"] = const.CHATGPTONAZURE
