@@ -1,10 +1,12 @@
 from bot.session_manager import Session
 from common.log import logger
 
-
+from bot.chatgpt import promot_constant
 class OpenAISession(Session):
     def __init__(self, session_id, system_prompt=None, model="gpt-3.5-turbo"):
-        super().__init__(session_id, system_prompt)
+        # super().__init__(session_id, system_prompt)
+        # sugar6 加入自定义promot
+        super().__init__(session_id, promot_constant.messages)
         self.model = model
         self.reset()
 

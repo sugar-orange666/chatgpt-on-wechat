@@ -2,6 +2,7 @@ from bot.session_manager import Session
 from common.log import logger
 from common import const
 
+
 """
     e.g.  [
         {"role": "system", "content": "You are a helpful assistant."},
